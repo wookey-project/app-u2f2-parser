@@ -26,19 +26,19 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
     size_t msgsz = 64; /* max msg buf size */
 
     /* request APDU CMD initialization to Fido backend */
-    printf("[PARSER] sending data to FIDO\n");
-    hexdump(buf, buf_len);
+    log_printf("[PARSER] sending data to FIDO\n");
+    //hexdump(buf, buf_len);
 
-    printf("[PARSER] Send APDU_CMD_INIT to Fido\n");
+    log_printf("[PARSER] Send APDU_CMD_INIT to Fido\n");
     msgbuf.mtype = MAGIC_APDU_CMD_INIT;
     msgsnd(fido_msq, &msgbuf, 0, 0);
 
-    printf("[PARSER] Send APDU_CMD_META to Fido : %x\n", metadata);
+    log_printf("[PARSER] Send APDU_CMD_META to Fido : %x\n", metadata);
     msgbuf.mtype = MAGIC_APDU_CMD_META;
     msgbuf.mtext.u32[0] = metadata;
     msgsnd(fido_msq, &msgbuf, sizeof(uint32_t), 0);
 
-    printf("[PARSER] Send APDU_CMD_MSG_LEN (len is %d) to Fido\n", buf_len);
+    log_printf("[PARSER] Send APDU_CMD_MSG_LEN (len is %d) to Fido\n", buf_len);
     msgbuf.mtype = MAGIC_APDU_CMD_MSG_LEN;
     msgbuf.mtext.u16[0] = buf_len;
     msgsnd(fido_msq, &msgbuf, sizeof(uint32_t), 0);
@@ -50,14 +50,14 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
 
     uint32_t i;
     for (i = 0; i < num_full_msg; ++i) {
-        printf("[PARSER] Send APDU_CMD_MSG (pkt %d) to Fido\n", i);
+        log_printf("[PARSER] Send APDU_CMD_MSG (pkt %d) to Fido\n", i);
         msgbuf.mtype = MAGIC_APDU_CMD_MSG;
         memcpy(&msgbuf.mtext.u8[0], &buf[offset], msgsz);
         msgsnd(fido_msq, &msgbuf, msgsz, 0);
         offset += msgsz;
     }
     if (residual_msg) {
-        printf("[PARSER] Send APDU_CMD_MSG (pkt %d, residual, %d bytes) to Fido\n", i, residual_msg);
+        log_printf("[PARSER] Send APDU_CMD_MSG (pkt %d, residual, %d bytes) to Fido\n", i, residual_msg);
         msgbuf.mtype = MAGIC_APDU_CMD_MSG;
         memcpy(&msgbuf.mtext.u8[0], &buf[offset], residual_msg);
         msgsnd(fido_msq, &msgbuf, residual_msg, 0);
@@ -67,9 +67,9 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
 
     /* get back APDU response */
     msgrcv(fido_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_RESP_INIT, 0);
-    printf("[PARSER] received APDU_RESP_INIT from Fido\n");
+    log_printf("[PARSER] received APDU_RESP_INIT from Fido\n");
     msgrcv(fido_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_RESP_MSG_LEN, 0);
-    printf("[PARSER] received APDU_RESP_MSG_LEN from Fido\n");
+    log_printf("[PARSER] received APDU_RESP_MSG_LEN from Fido\n");
 
     /* FIXME: use u16 instead of u32 */
     *resp_len = (uint16_t)msgbuf.mtext.u32[0];
@@ -80,13 +80,13 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
 
     for (i = 0; i < num_full_msg; ++i) {
         ret = msgrcv(fido_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_RESP_MSG, 0);
-        printf("[PARSER] received APDU_RESP_MSG (pkt %d) from Fido\n", i);
+        log_printf("[PARSER] received APDU_RESP_MSG (pkt %d) from Fido\n", i);
         memcpy(&resp[offset], &msgbuf.mtext.u8[0], msgsz);
         offset += msgsz;
     }
     if (residual_msg) {
         ret = msgrcv(fido_msq, &msgbuf.mtext, residual_msg, MAGIC_APDU_RESP_MSG, 0);
-        printf("[PARSER] received APDU_RESP_MSG (pkt %d, residual, %d bytes) from Fido\n", i, ret);
+        log_printf("[PARSER] received APDU_RESP_MSG (pkt %d, residual, %d bytes) from Fido\n", i, ret);
         memcpy(&resp[offset], &msgbuf.mtext.u8[0], residual_msg);
         offset += residual_msg;
     }
@@ -94,7 +94,7 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
     ret = msgrcv(fido_msq, &msgbuf.mtext, 1, MAGIC_CMD_RETURN, 0);
 
     errcode = msgbuf.mtext.u8[0];
-    printf("[PARSER] received errcode %x from Fido\n", errcode);
+    log_printf("[PARSER] received errcode %x from Fido\n", errcode);
 
     return errcode;
 }
@@ -104,7 +104,7 @@ mbed_error_t handle_wink(uint16_t timeout_ms, int usb_msq)
     timeout_ms = timeout_ms;
     /* send wink to FIDO */
     send_signal_with_acknowledge(get_fido_msq(), MAGIC_WINK_REQ, MAGIC_ACKNOWLEDGE);
-    printf("[Parser] wink done by FIDO, ack to USB\n");
+    log_printf("[Parser] wink done by FIDO, ack to USB\n");
     uint32_t mtype = MAGIC_ACKNOWLEDGE;
     msgsnd(usb_msq, &mtype, 0, 0);
 
@@ -138,7 +138,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
         goto err;
     }
     metadata = msgbuf.mtext.u32[0];
-    printf("[FIDO] received APDU_CMD_META from USB: %x\n", metadata);
+    log_printf("[FIDO] received APDU_CMD_META from USB: %x\n", metadata);
 
     /* now wait for APDU_CMD_MSG_LEN, to calculate the number of needed msg */
     ret = msgrcv(usb_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_CMD_MSG_LEN, 0);
@@ -148,7 +148,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
         goto err;
     }
     msg_size = msgbuf.mtext.u16[0];
-    printf("[FIDO] received APDU_CMD_MSG_LEN from USB (len is %d)\n", msg_size);
+    log_printf("[FIDO] received APDU_CMD_MSG_LEN from USB (len is %d)\n", msg_size);
 
     /* calculating number of messages */
     uint32_t num_full_msg = msg_size / 64;
@@ -164,7 +164,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
             errcode = MBED_ERROR_RDERROR;
             goto err;
         }
-        printf("[FIDO] received APDU_CMD_MSG (pkt %d) from USB\n", i);
+        log_printf("[FIDO] received APDU_CMD_MSG (pkt %d) from USB\n", i);
         offset += ret;
     }
     if (residual_msg) {
@@ -174,7 +174,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
             errcode = MBED_ERROR_RDERROR;
             goto err;
         }
-        printf("[FIDO] received APDU_CMD_MSG (pkt %d, residual, %d bytes) from USB\n", i, ret);
+        log_printf("[FIDO] received APDU_CMD_MSG (pkt %d, residual, %d bytes) from USB\n", i, ret);
         offset += ret;
     }
     if (offset != msg_size) {
@@ -185,21 +185,21 @@ mbed_error_t handle_apdu_request(int usb_msq)
 
     /* ready to execute the effective content */
 
-    printf("[FIDO] received APDU from USB\n");
-    hexdump(cmd_buf, msg_size);
+    log_printf("[FIDO] received APDU from USB\n");
+    //hexdump(cmd_buf, msg_size);
     cmd_buf[msg_size] = 0x0;
 
     errcode = u2fapdu_handle_cmd(metadata, &cmd_buf[0], msg_size, &resp_buf[0], &resp_len);
 
     /* return back content */
 
-    printf("[FIDO] Send APDU_RESP_INIT to USB\n");
+    log_printf("[FIDO] Send APDU_RESP_INIT to USB\n");
     mtype = MAGIC_APDU_RESP_INIT;
     msgsnd(usb_msq, &mtype, 0, 0);
 
     msgbuf.mtype = MAGIC_APDU_RESP_MSG_LEN;
     msgbuf.mtext.u32[0] = resp_len;
-    printf("[FIDO] Send APDU_RESP_MSG_LEN to USB\n");
+    log_printf("[FIDO] Send APDU_RESP_MSG_LEN to USB\n");
     msgsnd(usb_msq, &msgbuf, sizeof(uint32_t), 0);
 
     num_full_msg = resp_len / 64;
@@ -208,14 +208,14 @@ mbed_error_t handle_apdu_request(int usb_msq)
     for (i = 0; i < num_full_msg; ++i) {
         msgbuf.mtype = MAGIC_APDU_RESP_MSG;
         memcpy(&msgbuf.mtext.u8[0], &resp_buf[offset], msgsz);
-        printf("[FIDO] Send APDU_RESP_MSG (pkt %d) to USB\n", i);
+        log_printf("[FIDO] Send APDU_RESP_MSG (pkt %d) to USB\n", i);
         msgsnd(usb_msq, &msgbuf, msgsz, 0);
         offset += msgsz;
     }
     if (residual_msg != 0) {
         msgbuf.mtype = MAGIC_APDU_RESP_MSG;
         memcpy(&msgbuf.mtext.u8[0], &resp_buf[offset], residual_msg);
-        printf("[FIDO] Send APDU_RESP_MSG (pkt %d, residual) to USB\n", i);
+        log_printf("[FIDO] Send APDU_RESP_MSG (pkt %d, residual) to USB\n", i);
         msgsnd(usb_msq, &msgbuf, residual_msg, 0);
         offset += residual_msg;
     }
