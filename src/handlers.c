@@ -66,9 +66,9 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
     /* APDU request fully send... */
 
     /* get back APDU response */
-    msgrcv(fido_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_RESP_INIT, 0);
+    msgrcv(fido_msq, &msgbuf, msgsz, MAGIC_APDU_RESP_INIT, 0);
     log_printf("[PARSER] received APDU_RESP_INIT from Fido\n");
-    msgrcv(fido_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_RESP_MSG_LEN, 0);
+    msgrcv(fido_msq, &msgbuf, msgsz, MAGIC_APDU_RESP_MSG_LEN, 0);
     log_printf("[PARSER] received APDU_RESP_MSG_LEN from Fido\n");
 
     /* FIXME: use u16 instead of u32 */
@@ -79,19 +79,19 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
     offset = 0;
 
     for (i = 0; i < num_full_msg; ++i) {
-        ret = msgrcv(fido_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_RESP_MSG, 0);
+        ret = msgrcv(fido_msq, &msgbuf, msgsz, MAGIC_APDU_RESP_MSG, 0);
         log_printf("[PARSER] received APDU_RESP_MSG (pkt %d) from Fido\n", i);
         memcpy(&resp[offset], &msgbuf.mtext.u8[0], msgsz);
         offset += msgsz;
     }
     if (residual_msg) {
-        ret = msgrcv(fido_msq, &msgbuf.mtext, residual_msg, MAGIC_APDU_RESP_MSG, 0);
+        ret = msgrcv(fido_msq, &msgbuf, residual_msg, MAGIC_APDU_RESP_MSG, 0);
         log_printf("[PARSER] received APDU_RESP_MSG (pkt %d, residual, %d bytes) from Fido\n", i, ret);
         memcpy(&resp[offset], &msgbuf.mtext.u8[0], residual_msg);
         offset += residual_msg;
     }
     /* received overall APDU response from APDU/FIDO backend, get back return value */
-    ret = msgrcv(fido_msq, &msgbuf.mtext, 1, MAGIC_CMD_RETURN, 0);
+    ret = msgrcv(fido_msq, &msgbuf, 1, MAGIC_CMD_RETURN, 0);
 
     errcode = msgbuf.mtext.u8[0];
     log_printf("[PARSER] received errcode %x from Fido\n", errcode);
@@ -131,7 +131,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
 
 
     /* now wait for APDU_CMD_MSG_META, to calculate the number of needed msg */
-    ret = msgrcv(usb_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_CMD_META, 0);
+    ret = msgrcv(usb_msq, &msgbuf, msgsz, MAGIC_APDU_CMD_META, 0);
     if (ret == -1) {
         log_printf("[FIDO] Unable to get back CMD_MSG_META with errno %x\n", errno);
         errcode = MBED_ERROR_RDERROR;
@@ -141,7 +141,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
     log_printf("[FIDO] received APDU_CMD_META from USB: %x\n", metadata);
 
     /* now wait for APDU_CMD_MSG_LEN, to calculate the number of needed msg */
-    ret = msgrcv(usb_msq, &msgbuf.mtext, msgsz, MAGIC_APDU_CMD_MSG_LEN, 0);
+    ret = msgrcv(usb_msq, &msgbuf, msgsz, MAGIC_APDU_CMD_MSG_LEN, 0);
     if (ret == -1) {
         log_printf("[FIDO] Unable to get back CMD_MSG_LEN with errno %x\n", errno);
         errcode = MBED_ERROR_RDERROR;
@@ -158,22 +158,24 @@ mbed_error_t handle_apdu_request(int usb_msq)
     uint32_t offset = 0;
     uint32_t i;
     for (i = 0; i < num_full_msg; ++i) {
-        ret = msgrcv(usb_msq, &cmd_buf[offset], msgsz, MAGIC_APDU_CMD_MSG, 0);
+        ret = msgrcv(usb_msq, &msgbuf, msgsz, MAGIC_APDU_CMD_MSG, 0);
         if (ret == -1) {
             log_printf("[FIDO] Unable to get back CMD_MSG_LEN with errno %x\n", errno);
             errcode = MBED_ERROR_RDERROR;
             goto err;
         }
+        memcpy(&cmd_buf[offset], &msgbuf.mtext.u8[0], ret);
         log_printf("[FIDO] received APDU_CMD_MSG (pkt %d) from USB\n", i);
         offset += ret;
     }
     if (residual_msg) {
-        ret = msgrcv(usb_msq, &cmd_buf[offset], residual_msg, MAGIC_APDU_CMD_MSG, 0);
+        ret = msgrcv(usb_msq, &msgbuf, residual_msg, MAGIC_APDU_CMD_MSG, 0);
         if (ret == -1) {
             log_printf("[FIDO] Unable to get back CMD_MSG_LEN with errno %x\n", errno);
             errcode = MBED_ERROR_RDERROR;
             goto err;
         }
+        memcpy(&cmd_buf[offset], &msgbuf.mtext.u8[0], ret);
         log_printf("[FIDO] received APDU_CMD_MSG (pkt %d, residual, %d bytes) from USB\n", i, ret);
         offset += ret;
     }
