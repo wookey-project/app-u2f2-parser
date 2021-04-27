@@ -69,10 +69,9 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
     msgrcv(fido_msq, &msgbuf, msgsz, MAGIC_APDU_RESP_INIT, 0);
     log_printf("[PARSER] received APDU_RESP_INIT from Fido\n");
     msgrcv(fido_msq, &msgbuf, msgsz, MAGIC_APDU_RESP_MSG_LEN, 0);
-    log_printf("[PARSER] received APDU_RESP_MSG_LEN from Fido\n");
+    log_printf("[PARSER] received APDU_RESP_MSG_LEN (%d bytes) from Fido\n", msgbuf.mtext.u16[0]);
 
-    /* FIXME: use u16 instead of u32 */
-    *resp_len = (uint16_t)msgbuf.mtext.u32[0];
+    *resp_len = msgbuf.mtext.u16[0];
 
     num_full_msg = *resp_len / 64;
     residual_msg = *resp_len % 64;
@@ -192,6 +191,7 @@ mbed_error_t handle_apdu_request(int usb_msq)
     cmd_buf[msg_size] = 0x0;
 
     errcode = u2fapdu_handle_cmd(metadata, &cmd_buf[0], msg_size, &resp_buf[0], &resp_len);
+    log_printf("[FIDO] received buffer from FIDO, size %d\n", resp_len);
 
     /* return back content */
 
@@ -200,9 +200,9 @@ mbed_error_t handle_apdu_request(int usb_msq)
     msgsnd(usb_msq, &mtype, 0, 0);
 
     msgbuf.mtype = MAGIC_APDU_RESP_MSG_LEN;
-    msgbuf.mtext.u32[0] = resp_len;
+    msgbuf.mtext.u16[0] = resp_len;
     log_printf("[FIDO] Send APDU_RESP_MSG_LEN to USB\n");
-    msgsnd(usb_msq, &msgbuf, sizeof(uint32_t), 0);
+    msgsnd(usb_msq, &msgbuf, sizeof(uint16_t), 0);
 
     num_full_msg = resp_len / 64;
     residual_msg = resp_len % 64;
@@ -217,10 +217,11 @@ mbed_error_t handle_apdu_request(int usb_msq)
     if (residual_msg != 0) {
         msgbuf.mtype = MAGIC_APDU_RESP_MSG;
         memcpy(&msgbuf.mtext.u8[0], &resp_buf[offset], residual_msg);
-        log_printf("[FIDO] Send APDU_RESP_MSG (pkt %d, residual) to USB\n", i);
+        log_printf("[FIDO] Send APDU_RESP_MSG (pkt %d, residual, %d bytes) to USB\n", i, residual_msg);
         msgsnd(usb_msq, &msgbuf, residual_msg, 0);
         offset += residual_msg;
     }
+    log_printf("[FIDO] send APID_RESP_MSG command return to USB\n");
     /* response transmission done, sending local call return from u2fapdu_handle_cmd() */
     msgbuf.mtype = MAGIC_CMD_RETURN;
     msgbuf.mtext.u8[0] = errcode;
