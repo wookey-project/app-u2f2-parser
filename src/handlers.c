@@ -17,13 +17,19 @@
 /*
  * glue fonction, emulate the 'real' u2f_fido_handle_cmd, but transmit to FIDO app and get back content instead.
  */
-mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_len, uint8_t *resp, uint16_t *resp_len)
+mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_len, uint8_t *resp, uint16_t *resp_len, int *fido_error)
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
     int fido_msq = get_fido_msq();
     int ret;
     struct msgbuf msgbuf;
     size_t msgsz = 64; /* max msg buf size */
+    
+    if(fido_error == NULL){
+    	log_printf("[PARSER] sending data to FIDO\n");
+        errcode = MBED_ERROR_INVPARAM;
+        goto err;
+    }
 
     /* request APDU CMD initialization to Fido backend */
     log_printf("[PARSER] sending data to FIDO\n");
@@ -89,12 +95,15 @@ mbed_error_t u2f_fido_handle_cmd(uint32_t metadata, uint8_t *buf, uint16_t buf_l
         memcpy(&resp[offset], &msgbuf.mtext.u8[0], residual_msg);
         offset += residual_msg;
     }
-    /* received overall APDU response from APDU/FIDO backend, get back return value */
-    ret = msgrcv(fido_msq, &msgbuf, 1, MAGIC_CMD_RETURN, 0);
+    /* received overall APDU response from APDU/FIDO backend, get back return value and FIDO error */
+    ret = msgrcv(fido_msq, &msgbuf, 2, MAGIC_CMD_RETURN, 0);
 
     errcode = msgbuf.mtext.u8[0];
+    *fido_error = msgbuf.mtext.u8[1];
+    
     log_printf("[PARSER] received errcode %x from Fido\n", errcode);
 
+err:
     return errcode;
 }
 
@@ -190,7 +199,10 @@ mbed_error_t handle_apdu_request(int usb_msq)
     //hexdump(cmd_buf, msg_size);
     cmd_buf[msg_size] = 0x0;
 
-    errcode = u2fapdu_handle_cmd(metadata, &cmd_buf[0], msg_size, &resp_buf[0], &resp_len);
+    if((errcode = u2fapdu_handle_cmd(metadata, &cmd_buf[0], msg_size, &resp_buf[0], &resp_len)) != MBED_ERROR_NONE){
+        log_printf("[FIDO] error from u2fapdu_handle_cmd\n");
+        goto err;
+    }
     log_printf("[FIDO] received buffer from FIDO, size %d\n", resp_len);
 
     /* return back content */
